@@ -5,9 +5,9 @@ set -e
 YCSB_DIR="./ycsb"
 WORKLOAD_DIR="./workloads"
 BASE_RESULT_DIR="./results"
-DB_BINDING="shvmdb"
+DB_BINDING="dynamodb"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-ENDPOINT="http://localhost:8787"
+ENDPOINT="http://localhost:8787/api"
 OPERATION="run"
 WORKLOADS=""
 
@@ -97,8 +97,12 @@ for workload in "${ADDR[@]}"; do
     
     $YCSB_DIR/bin/ycsb.sh $OPERATION $DB_BINDING \
         -P "$WORKLOAD_PATH" \
-        -p shvmdb.endpoint=$ENDPOINT \
+        -p dynamodb.endpoint="$ENDPOINT" \
+        -p dynamodb.primaryKey=PK \
+        -p dynamodb.primaryKeyType=HASH \
+        -p dynamodb.awsCredentialsFile="fake-aws-credentials.properties" \
         -s > "$OUTPUT_FILE" 2>&1
+
         
     echo "Done. Results: $OUTPUT_FILE"
 done

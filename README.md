@@ -1,63 +1,158 @@
-# shvm-db Benchmark
+# YCSB ShvmDB Benchmark Setup
 
-This repository contains the YCSB benchmark setup for [shvm-db](https://github.com/shivamd20/shvm-db).
+This repository contains a custom YCSB binding for benchmarking **shvm-db**, a DynamoDB-compatible database built on Cloudflare Durable Objects.
 
 ## Architecture
-- **shvm-db**: Running locally on Cloudflare Workers (via `wrangler dev` on port 8787).
-- **YCSB**: Java benchmark client.
-- **Binding**: Custom `shvmdb` binding (`site.ycsb.db.shvmdb.ShvmDBClient`) that talks to shvm-db via HTTP (DynamoDB-compatible JSON).
 
-## Prerequisites
-1.  **Java 11+** installed (`java -version`).
-2.  **Maven** installed (`mvn -v`).
-3.  **shvm-db** running locally:
-    ```bash
-    cd /path/to/shvm-db
-    npm start
-    ```
+### Standalone ShvmDB Module
 
-## Setup & Build
-The YCSB source and bindings are included in the `ycsb/` directory.
+The `ycsb/shvmdb` module is a **standalone Maven project** that:
+- Depends on **upstream YCSB 0.17.0** from Maven Central (not local builds)
+- Contains only the ShvmDB-specific binding code
+- Can be built independently without building the entire YCSB project
+- Avoids dependency conflicts from other YCSB bindings (mongodb, cassandra, etc.)
 
-To report/rebuild the binding:
-```bash
-cd ycsb
-mvn -pl site.ycsb:shvmdb-binding -am clean package -DskipTests
-# Ensure dependencies are copied for the runner script
-mvn dependency:copy-dependencies -pl core
-```
+### Benefits
 
-## Running the Benchmark
-A convenience script `run_benchmark.sh` is provided to run the full suite (Workloads A, B, C, and Write-Only):
+✅ **Fast builds** - Only builds what you need (~2 seconds)  
+✅ **No broken dependencies** - Doesn't touch unrelated modules  
+✅ **Uses stable YCSB** - Pinned to official 0.17.0 release  
+✅ **CI/CD ready** - Simple, focused GitHub Actions workflow  
+
+## Quick Start
+
+### 1. Build the ShvmDB Binding
 
 ```bash
-./run_benchmark.sh
+./build_ycsb.sh
 ```
 
-This script will:
-1.  **Load** data (Workload A load phase).
-2.  **Run Workload A** (Update Heavy: 50/50).
-3.  **Run Workload B** (Read Heavy: 95/5).
-4.  **Run Workload C** (Read Only: 100/0).
-5.  **Run Write-Only** (Insert 100%).
+This script:
+- Builds the shvmdb binding module
+- Downloads required YCSB core dependencies
+- Prepares everything for benchmarking
 
-Results are saved to `results/` directory with timestamps.
+### 2. Start Your ShvmDB Server
 
-## Workloads
-Configuration files are in `workloads/`:
-- `workloada_shvmdb`: Update Heavy
-- `workloadb_shvmdb`: Read Heavy
-- `workloadc_shvmdb`: Read Only
-- `workload_write_only`: Stress test writes
+Make sure your shvm-db server is running (default: `http://localhost:8787`)
 
-## Current Results (Summary)
-See `results/summary.md` for the latest run.
+### 3. Run Benchmarks
 
-| Workload | Throughput (ops/sec) | Read Latency (p99) | Update Latency (p99) |
-|---|---|---|---|
-| Workload A | ~835 | ~16 ms | ~18 ms |
-| Workload B | ~830 | ~23 ms | ~27 ms |
-| Workload C | ~670 | ~28 ms | N/A |
-| Write Only | ~550 | N/A | ~35 ms |
+```bash
+# Load phase (insert initial data)
+./run_benchmark.sh -w workloada_shvmdb -o load
 
-*Note: Benchmarks run against local `miniflare` instance.*
+# Run phase (execute workload)
+./run_benchmark.sh -w workloada_shvmdb -o run
+
+# Multiple workloads
+./run_benchmark.sh -w workloada_shvmdb,workloadb_shvmdb -o run
+
+# Custom endpoint
+./run_benchmark.sh -w workloada_shvmdb -o load -e https://your-db.workers.dev
+```
+
+## Available Workloads
+
+Located in `workloads/`:
+
+- **workloada_shvmdb** - Update Heavy (50% read, 50% update)
+- **workloadb_shvmdb** - Read Heavy (95% read, 5% update)
+- **workloadc_shvmdb** - Read Only (100% read)
+- **workload_write_only** - Write Only (100% insert)
+
+## Results
+
+Benchmark results are stored in `results/run_XXXX/` with auto-incrementing run IDs.
+
+### Latest Results (Run 0001)
+
+| Workload | Throughput | Read p90 | Update p90 |
+|----------|------------|----------|------------|
+| Read Heavy (95% Read) | 372 ops/sec | 16.2 ms | 20.1 ms |
+| Write Heavy (95% Update) | 381 ops/sec | 15.0 ms | 17.7 ms |
+
+Each result file contains:
+- Throughput (ops/sec)
+- Latency percentiles (p50, p90, p95, p99, p99.9)
+- Operation counts and statistics
+
+## Development
+
+### Modifying the ShvmDB Binding
+
+1. Edit code in `ycsb/shvmdb/src/main/java/site/ycsb/db/shvmdb/`
+2. Rebuild: `./build_ycsb.sh`
+3. Test: `./run_benchmark.sh -w workloada_shvmdb -o load`
+
+### CI/CD
+
+The GitHub Actions workflow (`.github/workflows/build-and-publish.yml`) automatically:
+- Builds the shvmdb binding on every push
+- Publishes to GitHub Packages
+- Uses comprehensive caching for fast builds
+
+### Project Structure
+
+```
+shvm-db-benchmark/
+├── ycsb/
+│   ├── shvmdb/                    # Standalone ShvmDB binding
+│   │   ├── pom.xml                # Depends on YCSB 0.17.0 from Maven Central
+│   │   └── src/
+│   ├── core/                      # YCSB core (for local dev only)
+│   └── bin/                       # YCSB runner scripts
+├── workloads/                     # Benchmark workload definitions
+├── results/                       # Benchmark results (auto-generated)
+├── build_ycsb.sh                  # Build script
+└── run_benchmark.sh               # Benchmark runner
+```
+
+## Troubleshooting
+
+### "Cannot connect to ShvmDB"
+- Ensure your shvm-db server is running
+- Check the endpoint URL (default: `http://localhost:8787`)
+- Verify the server is accessible: `curl http://localhost:8787`
+
+### "Build failed"
+- Ensure Maven is installed: `mvn --version`
+- Ensure Java 11+ is installed: `java --version`
+- Try cleaning: `cd ycsb/shvmdb && mvn clean`
+
+### "Missing dependencies"
+- Run `./build_ycsb.sh` to rebuild everything
+- Check `ycsb/core/target/dependency/` exists
+- Check `ycsb/shvmdb/target/dependency/` exists
+
+## Technical Details
+
+### Maven Coordinates
+
+**ShvmDB Binding:**
+```xml
+<groupId>in.shvm.ycsb</groupId>
+<artifactId>shvmdb-binding</artifactId>
+<version>0.18.0-shivam-SNAPSHOT</version>
+```
+
+**Upstream YCSB Core:**
+```xml
+<groupId>site.ycsb</groupId>
+<artifactId>core</artifactId>
+<version>0.17.0</version>
+```
+
+### How It Works
+
+1. **Build Time**: The shvmdb module downloads YCSB 0.17.0 from Maven Central
+2. **Runtime**: The `ycsb.sh` script detects it's a source checkout and loads:
+   - Core JARs from `core/target/`
+   - Core dependencies from `core/target/dependency/`
+   - Binding JAR from `shvmdb/target/`
+   - Binding dependencies from `shvmdb/target/dependency/`
+
+This hybrid approach gives you:
+- Stable, tested YCSB core (0.17.0)
+- Custom ShvmDB binding (your code)
+- No need to build 50+ unrelated modules

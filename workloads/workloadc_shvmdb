@@ -20,7 +20,7 @@ requestdistribution=zipfian
 # shvm-db connection
 db=site.ycsb.db.shvmdb.ShvmDBClient
 shvmdb.endpoint=http://localhost:8787
-shvmdb.table=usertable
+# shvmdb.table is auto-generated for isolation
 
 # Thread count
 threadcount=4
